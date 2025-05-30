@@ -7,8 +7,8 @@ use axum::{
 use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page};
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::{ffi::OsStr, fs};
-use std::{ffi::OsString, path::Path};
 use tokio::process::Command;
 
 use crate::models::device::Device;
@@ -16,6 +16,8 @@ use crate::models::state::AppState;
 
 mod helpers;
 use helpers::{extract_header_numeric, extract_header_string, extract_header_string_optional};
+mod display;
+use display::DisplayResponse;
 
 #[derive(Serialize)]
 pub struct SetupResponse {
@@ -23,60 +25,6 @@ pub struct SetupResponse {
     pub friendly_id: String,
     pub image_url: String,
     pub message: String,
-}
-
-#[derive(Serialize)]
-pub struct DisplayResponse {
-    image_url: String,
-    image_url_timeout: u32,
-    filename: String,
-    refresh_rate: u32,
-    reset_firmware: bool,
-    update_firmware: bool,
-    firmware_url: Option<String>,
-    special_function: String,
-}
-
-impl DisplayResponse {
-    pub fn from_device(device: &Device, base_url: &str) -> Self {
-        let (filename, image_path) = if let Some(image_uuid) = &device.current_screen_image {
-            let use_bmp = device
-                .last_firmware_version
-                .as_ref()
-                .map(|v| version_compare(v, "1.5.2") < 0)
-                .unwrap_or(true);
-
-            if use_bmp {
-                (
-                    format!("{}.bmp", image_uuid),
-                    format!("images/generated/{}.bmp", image_uuid),
-                )
-            } else {
-                (
-                    format!("{}.png", image_uuid),
-                    format!("images/generated/{}.png", image_uuid),
-                )
-            }
-        } else {
-            (
-                "setup-logo.bmp".to_string(),
-                "images/setup-logo.bmp".to_string(),
-            )
-        };
-
-        let image_url = format!("{}/storage/{}", base_url, image_path);
-
-        DisplayResponse {
-            image_url,
-            image_url_timeout: 15,
-            filename,
-            refresh_rate: device.default_refresh_interval as u32,
-            reset_firmware: false,
-            update_firmware: false,
-            firmware_url: None,
-            special_function: "sleep".to_string(),
-        }
-    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -374,15 +322,6 @@ pub async fn render_webpage(
     };
 
     Ok(Json(response))
-}
-
-// TODO: replace with semver crate?
-fn version_compare(a: &str, b: &str) -> i8 {
-    match a.cmp(b) {
-        std::cmp::Ordering::Less => -1,
-        std::cmp::Ordering::Equal => 0,
-        std::cmp::Ordering::Greater => 1,
-    }
 }
 
 pub fn router() -> axum::Router<AppState> {
