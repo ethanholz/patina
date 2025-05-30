@@ -185,14 +185,15 @@ pub async fn display_endpoint(
     } else {
         (
             "setup-logo.bmp".to_string(),
-            "images/setup-log.bmp".to_string(),
+            "images/setup-logo.bmp".to_string(),
         )
     };
     info!("image found");
+    let image_url = format!("{}/storage/{}", state.base_url, image_path);
 
     let resp = DisplayResponse {
-        image_url: format!("{}/storage/{}", state.base_url, image_path),
-        image_url_timeout: 0,
+        image_url: image_url.clone(),
+        image_url_timeout: 15,
         filename,
         refresh_rate: device.default_refresh_interval as u32,
         reset_firmware: false,
@@ -200,7 +201,7 @@ pub async fn display_endpoint(
         firmware_url: None,
         special_function: "sleep".to_string(),
     };
-    info!("displaying");
+    info!("displaying {}", image_url);
 
     Ok(Json(resp))
 }
