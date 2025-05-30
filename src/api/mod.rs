@@ -4,8 +4,12 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
+use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page};
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::{ffi::OsStr, fs};
+use std::{ffi::OsString, path::Path};
+use tokio::process::Command;
 
 use crate::models::device::Device;
 use crate::models::state::AppState;
@@ -31,6 +35,48 @@ pub struct DisplayResponse {
     update_firmware: bool,
     firmware_url: Option<String>,
     special_function: String,
+}
+
+impl DisplayResponse {
+    pub fn from_device(device: &Device, base_url: &str) -> Self {
+        let (filename, image_path) = if let Some(image_uuid) = &device.current_screen_image {
+            let use_bmp = device
+                .last_firmware_version
+                .as_ref()
+                .map(|v| version_compare(v, "1.5.2") < 0)
+                .unwrap_or(true);
+
+            if use_bmp {
+                (
+                    format!("{}.bmp", image_uuid),
+                    format!("images/generated/{}.bmp", image_uuid),
+                )
+            } else {
+                (
+                    format!("{}.png", image_uuid),
+                    format!("images/generated/{}.png", image_uuid),
+                )
+            }
+        } else {
+            (
+                "setup-logo.bmp".to_string(),
+                "images/setup-logo.bmp".to_string(),
+            )
+        };
+
+        let image_url = format!("{}/storage/{}", base_url, image_path);
+
+        DisplayResponse {
+            image_url,
+            image_url_timeout: 15,
+            filename,
+            refresh_rate: device.default_refresh_interval as u32,
+            reset_firmware: false,
+            update_firmware: false,
+            firmware_url: None,
+            special_function: "sleep".to_string(),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -164,44 +210,8 @@ pub async fn display_endpoint(
     }
 
     info!("attempting to find image");
-    let (filename, image_path) = if let Some(image_uuid) = &device.current_screen_image {
-        let use_bmp = device
-            .last_firmware_version
-            .as_ref()
-            .map(|v| version_compare(v, "1.5.2") < 0)
-            .unwrap_or(true);
-
-        if use_bmp {
-            (
-                format!("{}.bmp", image_uuid),
-                format!("images/generated/{}.bmp", image_uuid),
-            )
-        } else {
-            (
-                format!("{}.png", image_uuid),
-                format!("images/generated/{}.png", image_uuid),
-            )
-        }
-    } else {
-        (
-            "setup-logo.bmp".to_string(),
-            "images/setup-logo.bmp".to_string(),
-        )
-    };
-    info!("image found");
-    let image_url = format!("{}/storage/{}", state.base_url, image_path);
-
-    let resp = DisplayResponse {
-        image_url: image_url.clone(),
-        image_url_timeout: 15,
-        filename,
-        refresh_rate: device.default_refresh_interval as u32,
-        reset_firmware: false,
-        update_firmware: false,
-        firmware_url: None,
-        special_function: "sleep".to_string(),
-    };
-    info!("displaying {}", image_url);
+    let resp = DisplayResponse::from_device(&device, &state.base_url);
+    info!("displaying {}", resp.image_url);
 
     Ok(Json(resp))
 }
