@@ -1,4 +1,4 @@
-# byos-rust
+# patina
 This is a reimplementation of a TRMNL server in Rust!
 
 ## TODO
