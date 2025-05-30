@@ -40,6 +40,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    let assets_path = Path::new("./assets/setup-logo.bmp");
+    if !assets_path.exists() {
+        panic!("Missing asset path");
+    }
+
     let db_path = Path::new("./database.db");
     // Create a new DB if it doesn't exist
     if !db_path.exists() {
