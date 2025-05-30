@@ -2,6 +2,6 @@
 This is a reimplementation of a TRMNL server in Rust!
 
 ## TODO
-- [ ] Add the display endpoint
-- [ ] Add the initial setup image
+- [x] Add the display endpoint
+- [x] Add the initial setup image
 - [ ] Implement site rendering
