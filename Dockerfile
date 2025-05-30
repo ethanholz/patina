@@ -20,4 +20,5 @@ FROM debian:bullseye-slim AS runtime
 ENV PORT=3000
 WORKDIR /app
 COPY --from=builder /app/target/release/byos-rust /app
+COPY assets /app/assets
 ENTRYPOINT ["/app/byos-rust"]
