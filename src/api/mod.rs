@@ -248,6 +248,124 @@ pub async fn setup_endpoint(
     Ok(Json(resp))
 }
 
+pub async fn render_webpage(
+    headers: HeaderMap,
+    State(_): State<AppState>,
+) -> Result<Json<CreateDeviceResponse>, StatusCode> {
+    let url = extract_header_string(&headers, "url")?;
+
+    info!("Rendering webpage: {}", url);
+
+    // Not sure why we have to do this but it works
+    let base = OsStr::new("--hide-scrollbars");
+    let args = vec![base];
+
+    // Create browser with custom window size
+    let launch_options = LaunchOptions::default_builder()
+        .window_size(Some((800, 480)))
+        .headless(true)
+        .sandbox(false)
+        .args(args)
+        .build()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    info!("built");
+
+    let browser = Browser::new(launch_options);
+    let browser = match browser {
+        Err(err) => panic!("{}", err),
+        Ok(browser) => browser,
+    };
+
+    info!("browser launched");
+
+    // Navigate to the URL and take screenshot
+    let tab = browser
+        .new_tab()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    tab.call_method(Page::SetDeviceMetricsOverride {
+        width: 800,
+        height: 480,
+        device_scale_factor: 1.0,
+        mobile: false,
+        scale: None,
+        screen_width: Some(800),
+        screen_height: Some(480),
+        position_x: None,
+        position_y: None,
+        dont_set_visible_size: None,
+        screen_orientation: None,
+        viewport: None,
+    })
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    tab.navigate_to(&url)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tab.wait_until_navigated()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Generate unique filename
+    let uuid = uuid::Uuid::new_v4().to_string();
+    let filename = format!("{}.png", uuid);
+
+    // Ensure the generated directory exists
+    let generated_dir = Path::new("assets/images/generated");
+    if !generated_dir.exists() {
+        fs::create_dir_all(generated_dir).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    // Take screenshot and save to filesystem
+    let screenshot_path = format!("assets/images/generated/{}", filename);
+    let screenshot_data = tab
+        .capture_screenshot(
+            headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
+            None,
+            None,
+            true,
+        )
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    fs::write(&screenshot_path, screenshot_data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let output_path = format!("assets/images/generated/{}.bmp", uuid);
+    let bmp_output = format!("bmp3:{}", output_path);
+
+    info!(
+        "Running ImageMagick command: magick {} -monochrome -depth 1 -strip {}",
+        screenshot_path, bmp_output
+    );
+
+    let magick_result = Command::new("magick")
+        .args([
+            &screenshot_path,
+            "-monochrome",
+            "-depth",
+            "1",
+            "-strip",
+            &bmp_output,
+        ])
+        .output()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if !magick_result.status.success() {
+        info!(
+            "ImageMagick command failed: {}",
+            String::from_utf8_lossy(&magick_result.stderr)
+        );
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    info!("Screenshot saved to: {}", screenshot_path);
+    info!("BMP saved to: {}", output_path);
+
+    let response = CreateDeviceResponse {
+        message: format!("Screenshot saved as {}", filename),
+    };
+
+    Ok(Json(response))
+}
+
 // TODO: replace with semver crate?
 fn version_compare(a: &str, b: &str) -> i8 {
     match a.cmp(b) {
@@ -263,4 +381,5 @@ pub fn router() -> axum::Router<AppState> {
         .route("/display", get(display_endpoint))
         .route("/log", post(log_endpoint))
         .route("/add", post(create_device_endpoint))
+        .route("/render", post(render_webpage))
 }

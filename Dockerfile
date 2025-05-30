@@ -23,4 +23,9 @@ ENV PORT=3000
 WORKDIR /app
 COPY --from=builder /app/target/aarch64-unknown-linux-musl/release/byos-rust /app
 COPY assets /app/assets
+RUN apk add --no-cache \
+    chromium \
+    font-liberation \
+    ca-certificates \
+    imagemagick
 ENTRYPOINT ["/app/byos-rust"]
