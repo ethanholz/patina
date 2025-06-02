@@ -4,15 +4,11 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
-use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page};
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::{ffi::OsStr, fs};
-use tokio::process::Command;
 
-use crate::models::device::Device;
 use crate::models::state::AppState;
+use crate::{models::device::Device, render::RenderedImage};
 
 mod helpers;
 use helpers::{extract_header_numeric, extract_header_string, extract_header_string_optional};
@@ -70,6 +66,23 @@ pub struct AdditionalInfo {
 #[derive(Serialize, Debug)]
 pub struct CreateDeviceResponse {
     pub message: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct AddImageResponse {
+    pub message: String,
+    pub png_path: String,
+    pub bmp_path: String,
+}
+
+impl From<RenderedImage> for AddImageResponse {
+    fn from(image: RenderedImage) -> Self {
+        AddImageResponse {
+            message: "Image added successfully".to_string(),
+            png_path: image.png_path.display().to_string(),
+            bmp_path: image.bmp_path.display().to_string(),
+        }
+    }
 }
 
 pub async fn create_device_endpoint(
@@ -209,117 +222,18 @@ pub async fn setup_endpoint(
 pub async fn render_webpage(
     headers: HeaderMap,
     State(_): State<AppState>,
-) -> Result<Json<CreateDeviceResponse>, StatusCode> {
+) -> Result<Json<AddImageResponse>, StatusCode> {
     let url = extract_header_string(&headers, "url")?;
 
     info!("Rendering webpage: {}", url);
-
-    // Not sure why we have to do this but it works
-    let base = OsStr::new("--hide-scrollbars");
-    let args = vec![base];
-
-    // Create browser with custom window size
-    let launch_options = LaunchOptions::default_builder()
-        .window_size(Some((800, 480)))
-        .headless(true)
-        .sandbox(false)
-        .args(args)
-        .build()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    info!("built");
-
-    let browser = Browser::new(launch_options);
-    let browser = match browser {
-        Err(err) => panic!("{}", err),
-        Ok(browser) => browser,
-    };
-
-    info!("browser launched");
-
-    // Navigate to the URL and take screenshot
-    let tab = browser
-        .new_tab()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    tab.call_method(Page::SetDeviceMetricsOverride {
-        width: 800,
-        height: 480,
-        device_scale_factor: 1.0,
-        mobile: false,
-        scale: None,
-        screen_width: Some(800),
-        screen_height: Some(480),
-        position_x: None,
-        position_y: None,
-        dont_set_visible_size: None,
-        screen_orientation: None,
-        viewport: None,
-    })
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    tab.navigate_to(&url)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    tab.wait_until_navigated()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Generate unique filename
-    let uuid = uuid::Uuid::new_v4().to_string();
-    let filename = format!("{}.png", uuid);
-
-    // Ensure the generated directory exists
-    let generated_dir = Path::new("assets/images/generated");
-    if !generated_dir.exists() {
-        fs::create_dir_all(generated_dir).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    }
-
-    // Take screenshot and save to filesystem
-    let screenshot_path = format!("assets/images/generated/{}", filename);
-    let screenshot_data = tab
-        .capture_screenshot(
-            headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
-            None,
-            None,
-            true,
-        )
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    fs::write(&screenshot_path, screenshot_data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let output_path = format!("assets/images/generated/{}.bmp", uuid);
-    let bmp_output = format!("bmp3:{}", output_path);
-
-    info!(
-        "Running ImageMagick command: magick {} -monochrome -depth 1 -strip {}",
-        screenshot_path, bmp_output
-    );
-
-    let magick_result = Command::new("magick")
-        .args([
-            &screenshot_path,
-            "-monochrome",
-            "-depth",
-            "1",
-            "-strip",
-            &bmp_output,
-        ])
-        .output()
+    // This renders a PNG
+    let render_image = RenderedImage::default();
+    let _ = render_image
+        .render(&url)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if !magick_result.status.success() {
-        info!(
-            "ImageMagick command failed: {}",
-            String::from_utf8_lossy(&magick_result.stderr)
-        );
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    info!("Screenshot saved to: {}", screenshot_path);
-    info!("BMP saved to: {}", output_path);
-
-    let response = CreateDeviceResponse {
-        message: format!("Screenshot saved as {}", filename),
-    };
+    let response = AddImageResponse::from(render_image);
 
     Ok(Json(response))
 }

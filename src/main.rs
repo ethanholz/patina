@@ -1,7 +1,11 @@
 use axum::Router;
 use log::info;
 use models::state::AppState;
-use std::{env, fs::File, path::Path};
+use std::{
+    env,
+    fs::{self, File},
+    path::Path,
+};
 use tokio::signal;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::EnvFilter;
@@ -9,6 +13,7 @@ use tracing_subscriber::EnvFilter;
 mod api;
 mod db;
 mod models;
+mod render;
 
 async fn shutdown_signal() {
     let ctrl_c = async {
@@ -43,6 +48,11 @@ async fn main() -> anyhow::Result<()> {
     let assets_path = Path::new("./assets/setup-logo.bmp");
     if !assets_path.exists() {
         panic!("Missing asset path");
+    }
+
+    let assets_base_path = Path::new("./assets/images/generated");
+    if !assets_base_path.exists() {
+        fs::create_dir_all(assets_base_path)?;
     }
 
     let db_path = Path::new("./database.db");
