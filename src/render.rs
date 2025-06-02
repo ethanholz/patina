@@ -17,10 +17,8 @@ impl RenderedImage {
     pub fn default() -> Self {
         let id = uuid::Uuid::new_v4();
         let generated_dir = Path::new("assets/images/generated");
-        let png_name = format!("{}.png", id.to_string());
-        let png_path = generated_dir.join(png_name);
-        let bmp_name = format!("{}.bmp", id.to_string());
-        let bmp_path = generated_dir.join(bmp_name);
+        let png_path = generated_dir.join(id.to_string()).with_extension("png");
+        let bmp_path = generated_dir.join(id.to_string()).with_extension("bmp");
         Self { png_path, bmp_path }
     }
 
