@@ -26,6 +26,5 @@ COPY assets /app/assets
 RUN apk add --no-cache \
     chromium \
     font-liberation \
-    ca-certificates \
-    imagemagick
+    ca-certificates
 ENTRYPOINT ["/app/byos-rust"]

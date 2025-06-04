@@ -14,6 +14,7 @@ pub struct DisplayResponse {
 }
 
 impl DisplayResponse {
+    // TODO: Potentially migrate this to use a RenderedImage instead
     pub fn from_device(device: &Device, base_url: &str) -> Self {
         let (filename, image_path) = if let Some(image_uuid) = &device.current_screen_image {
             let use_bmp = device

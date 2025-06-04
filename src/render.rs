@@ -4,6 +4,11 @@ use std::{
 };
 
 use headless_chrome::{Browser, LaunchOptions, protocol::cdp::Page};
+use image::{
+    ImageFormat,
+    imageops::{BiLevel, dither},
+    load_from_memory_with_format,
+};
 use log::debug;
 use tokio::{fs, process::Command};
 
@@ -23,12 +28,11 @@ impl RenderedImage {
     }
 
     pub async fn render(&self, url: &str) -> Result<(), anyhow::Error> {
-        self.render_png(url).await?;
-        self.convert_png_to_bmp().await?;
+        self.render_images(url).await?;
         Ok(())
     }
 
-    async fn render_png(&self, url: &str) -> Result<(), anyhow::Error> {
+    async fn render_images(&self, url: &str) -> Result<(), anyhow::Error> {
         // Not sure why we have to do this but it works
         let base = OsStr::new("--hide-scrollbars");
         let args = vec![base];
@@ -79,27 +83,18 @@ impl RenderedImage {
             true,
         )?;
 
-        fs::write(&self.png_path, screenshot_data).await?;
+        let png = load_from_memory_with_format(&screenshot_data, ImageFormat::Png);
+        match png {
+            Ok(png) => {
+                let mut grayscale = png.grayscale();
+                let mut grayscale = grayscale.as_mut_luma8().unwrap();
+                dither(&mut grayscale, &BiLevel);
+                grayscale.save(&self.png_path).unwrap();
+                grayscale.save(&self.bmp_path).unwrap();
+            }
+            Err(err) => return Err(err.into()),
+        }
         debug!("wrote PNG");
-        Ok(())
-    }
-
-    pub async fn convert_png_to_bmp(&self) -> Result<(), anyhow::Error> {
-        let bmp_output = format!("bmp3:{}", self.bmp_path.display());
-        debug!("converting using magick");
-        let _ = Command::new("magick")
-            .args([
-                self.png_path.display().to_string().as_str(),
-                "-monochrome",
-                "-depth",
-                "1",
-                "-strip",
-                &bmp_output,
-            ])
-            .output()
-            .await?;
-        debug!("converted successfully");
-
         Ok(())
     }
 }
