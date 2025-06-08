@@ -23,6 +23,7 @@ ENV PORT=3000
 WORKDIR /app
 COPY --from=builder /app/target/aarch64-unknown-linux-musl/release/byos-rust /app
 COPY assets /app/assets
+COPY templates /app/templates
 RUN apk add --no-cache \
     chromium \
     font-liberation \
